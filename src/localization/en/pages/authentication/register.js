@@ -1,0 +1,15 @@
+export default {
+    validation: "Please enter the requested information.",
+    compare_password: "The passwords are not equal",
+    mobile_validation: "This mobile number is already registered.",
+    header: "Adjust the temperature anywhere, anytimes!",
+    title: "Create an account",
+    full_name: "Full name",
+    password: "Password",
+    mobile: "Mobile number",
+    password: "Password",
+    confirm_password: "Confirm password",
+    register: "Register",
+    login_guide: "Have you already registered?",
+    login: "Login",
+}

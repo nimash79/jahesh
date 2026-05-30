@@ -1,0 +1,17 @@
+export default {
+    app_name: "JAHESH",
+    server_error: "There was a problem with the server.",
+    error: "There is something wrong,",
+    success: "Settings applied successfully.",
+    success_save: "Saved successfully.",
+    clear: "Clear",
+    confirm: "Confirm",
+    control: "Control",
+    phone_settings: "Contacts",
+    device_settings: "Device",
+    zone_settings: "Zone",
+    sms: "SMS",
+    wifi: "WIFI",
+    save: "Save",
+    send: "Send",
+}

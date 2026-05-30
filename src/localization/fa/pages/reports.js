@@ -1,0 +1,1 @@
+export default { title: "گزارش‌ها", subtitle: "گزارش‌های سیستم" };

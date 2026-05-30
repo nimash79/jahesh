@@ -1,0 +1,17 @@
+export default {
+    device_status: "DEVICE STATUS",
+    lock: "Lock",
+    unlock: "Unlock",
+    on: "ON",
+    off: "OFF",
+    relays_status: "RELAYS STATUS",
+    relay_number: "Relay {{number}}",
+    refresh: "Refresh",
+    alarm_number: "Alarm number",
+    phone_placeholder: "Enter phone number ...",
+    alarm_password: "Alarm password",
+    password_placeholder: "Enter password ...",
+    validation: "Validation error!",
+    add_alarm: "Add alarm",
+    remove_alarm: "Remove alarm",
+}

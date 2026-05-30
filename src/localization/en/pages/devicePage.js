@@ -1,0 +1,16 @@
+export default {
+    time_settings: "TIME SETTINGS",
+    alarm_period: "ALARM PERIOD",
+    alarm_status: "ALARM STATUS",
+    system_mode: "SYSTEM MODE",
+    change_menu_password: "CHANGE MENU PASSWORD",
+    change_sms_password: "CHANGE SMS PASSWORD",
+    test: "TEST",
+    double_secure: "DOUBLE SECURE",
+    old_password: "OLD PASSWORD",
+    new_password: "NEW PASSWORD",
+    minute_number: "{{number}} minutes",
+    second_number: "{{number}} seconds",
+    off: "Off",
+    on: "On",
+}

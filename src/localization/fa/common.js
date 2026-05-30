@@ -1,0 +1,17 @@
+export default {
+    app_name: "جهش",
+    server_error: "مشکلی از سمت سرور پیش آمده است.",
+    error: "مشکلی پیش آمده است.",
+    success: "تنظیمات با موفقیت اعمال شد.",
+    success_save: "با موفقیت ذخیره شد.",
+    clear: "پاک کردن",
+    confirm: "تأیید",
+    control: "کنترل",
+    phone_settings: "تلفن کننده",
+    device_settings: "دستگاه",
+    zone_settings: "زون",
+    sms: "پیامک",
+    wifi: "وای‌فای",
+    save: "ذخیره",
+    send: "ارسال",
+}

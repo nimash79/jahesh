@@ -1,0 +1,16 @@
+export default {
+    time_settings: "تنظیمات زمان",
+    alarm_period: "زمان اتمام هشدار",
+    alarm_status: "وضعیت آلارم",
+    system_mode: "حالت کاری",
+    change_menu_password: "تغییر رمز منو",
+    change_sms_password: "تغییر رمز پیامک",
+    test: "تست",
+    double_secure: "حفاظت دو برابر",
+    old_password: "رمز قدیم",
+    new_password: "رمز جدید",
+    minute_number: "{{number}} دقیقه",
+    second_number: "{{number}} ثانیه",
+    off: "خاموش",
+    on: "روشن",
+}

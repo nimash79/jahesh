@@ -1,0 +1,40 @@
+export const FIX_TEXT = "JAHESH";
+
+export const OPCODE = {
+  DEVICE_STATUS: "01",
+  RELAY_STATUS: "02",
+  SMS_LANGUAGE: "03",
+  PHONES: "04",
+  PHONES_SETTINGS: "05",
+  PHONES_LIST: "06",
+  TIME_SETTINGS: "07",
+  ALARM_PERIOD: "08",
+  ALARM_STATUS: "09",
+  SYSTEM_MODE: "10",
+  TEST: "11",
+  DOUBLE_SECURE: "12",
+  PASSWORD_MENU: "13",
+  PASSWORD_SMS: "14",
+  ZONES_SETTINGS: "15",
+  OUTPUT_SETTINGS: "16",
+};
+
+export const COLORS = {
+  bg0: "#fbf7ff",
+  bg1: "#ffffff",
+  primary: "#7b61ff",
+  backSections: "#f5f5f5",
+  neutral40: "#404040",
+  neutral60: "#606060",
+  neutral_f9: "#f9f9f9",
+  neutral_e9: "#e9e9e9",
+  tint0: "#f5f2ff",
+  tint1: "#e5dfff",
+  tint2: "#d7d0ff",
+  tint5: "#8871ff",
+  shade1: "#6147e5",
+  neutral_ed: "#ededed",
+  success: "#00966d",
+  success2: "#04a045",
+  error: "#c30000",
+}

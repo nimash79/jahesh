@@ -1,0 +1,17 @@
+export default {
+    device_status: "وضعیت دستگاه",
+    lock: "قفل",
+    unlock: "باز",
+    on: "روشن",
+    off: "خاموش",
+    relays_status: "وضعیت رله ها",
+    relay_number: "رله {{number}}",
+    refresh: "به روزرسانی",
+    alarm_number: "شماره دزدگیر",
+    phone_placeholder: "شماره موبایل را وارد کنید ...",
+    alarm_password: "رمز دزدگیر",
+    password_placeholder: "رمز را وارد کنید ...",
+    validation: "خطای اعتبارسنجی",
+    add_alarm: "افزودن دزدگیر",
+    remove_alarm: "حذف دزدگیر",
+}

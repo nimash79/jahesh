@@ -1,5 +1,5 @@
 import Svg, { Path } from "react-native-svg"
-const SettingsIcon = ({width = 24, height = 24, color = "#ADADAD"}) => {
+const SettingsIcon = ({width = 24, height = 24, color = "#ADADAD", ...props}) => {
   return (
     <Svg
       width={width}
@@ -7,6 +7,7 @@ const SettingsIcon = ({width = 24, height = 24, color = "#ADADAD"}) => {
       viewBox="0 0 32 32"
       fill={color}
       xmlns="http://www.w3.org/2000/svg"
+      {...props}
     >
       <Path
         fillRule="evenodd"

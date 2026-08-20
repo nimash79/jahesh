@@ -10,5 +10,5 @@ export default {
     manager: "مدیر",
     report: "گزارش‌دهی",
     guard: "نگهبان",
-    lobyman: "لابی‌من",
+    ambient_listening: "شنود",
 }

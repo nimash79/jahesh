@@ -3,11 +3,27 @@ import CustomText from './CustomText';
 import { useTranslation } from 'react-i18next';
 import { COLORS } from '../../utils/constants';
 
-const CustomButton = ({ text, style, textStyle, icon, onPress, outline = false }) => {
+const CustomButton = ({
+  text,
+  style,
+  textStyle,
+  icon,
+  onPress,
+  outline = false,
+  disabled = false,
+}) => {
   return (
-    <TouchableOpacity style={[styles.container, outline ? styles.outline : {}, style]} onPress={onPress}>
-        {icon}
-      <CustomText style={[styles.text, outline ? styles.textOutline : {}, textStyle]}>{text}</CustomText>
+    <TouchableOpacity
+      style={[styles.container, outline ? styles.outline : {}, style]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      {icon}
+      <CustomText
+        style={[styles.text, icon ? styles.textWithIcon : {}, outline ? styles.textOutline : {}, textStyle]}
+      >
+        {text}
+      </CustomText>
     </TouchableOpacity>
   );
 };
@@ -19,17 +35,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: COLORS.primary,
     borderRadius: 14,
-    display: "flex",
-    flexDirection: "row",
+    display: 'flex',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: "center",
+    justifyContent: 'center',
   },
   outline: {
-    backgroundColor: "transparent",
+    backgroundColor: 'transparent',
     borderColor: COLORS.primary,
     borderWidth: 1,
   },
-  text: { color: COLORS.neutral_f9, marginInlineStart: 8 },
+  text: { color: COLORS.neutral_f9 },
+  textWithIcon: { marginInlineStart: 8 },
   textOutline: {
     color: COLORS.primary,
   },

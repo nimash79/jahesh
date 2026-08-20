@@ -17,6 +17,25 @@ export const OPCODE = {
   PASSWORD_SMS: "14",
   ZONES_SETTINGS: "15",
   OUTPUT_SETTINGS: "16",
+  AMBIENT_LISTENING: "18",
+  SET_REMOTE: "19",
+  SET_WIRELESS_ZONE: "20",
+  SET_TIMER_RELAYS: "21",
+  RELAY_MODE: "22",
+  // SYSTEM_MODE: "23",
+  SILENT_MODE: "24",
+  SYSTEM_UPDATE: "25",
+};
+
+export const STORAGE_KEYS = {
+  alarmNumber: 'alarm_number',
+  alarmPassword: 'alarm_password',
+  deviceStatus: 'home_device_status',
+  relayStatus: 'home_relay_status',
+  relayNumber: 'home_relay_number',
+  alarmProfiles: 'alarm_profiles',
+  macAddresses: 'mac_addresses',
+  macAddress: 'mac_address',
 };
 
 export const COLORS = {
@@ -37,4 +56,5 @@ export const COLORS = {
   success: "#00966d",
   success2: "#04a045",
   error: "#c30000",
+  warning: "#e1b503",
 }

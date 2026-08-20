@@ -6,8 +6,9 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  TouchableWithoutFeedback,
 } from 'react-native';
-import RNRestart from 'react-native-restart';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -22,6 +23,12 @@ import SmsIcon from './../components/icons/SmsIcon';
 import CustomText from '../components/shared/CustomText';
 import { ScrollView } from 'react-native-gesture-handler';
 import { addLanguage } from '../utils/language_storage';
+import BluetoothIcon from './../components/icons/BluetoothIcon';
+import BluetoothMethodIcon from './../components/icons/BluetoothMethodIcon';
+import { backgroundColor } from 'react-native-general-calendars/src/style';
+import SettingsIcon from '../components/icons/SettingsIcon';
+import ArrowBackIcon from './../components/icons/ArrowBackIcon';
+import BluetoothStatusIcon from '../components/icons/BluetoothStatusIcon';
 
 const MainLayout = ({ children }) => {
   const { t, i18n } = useTranslation();
@@ -29,13 +36,8 @@ const MainLayout = ({ children }) => {
   const route = useRoute();
   const dispatch = useDispatch();
   const sendMethod = useSelector(state => state.sendMethod);
+  const connection = useSelector(state => state.connection);
   const insets = useSafeAreaInsets();
-
-  const changeLanguage = async (lang) => {
-    await i18n.changeLanguage(lang);
-    await addLanguage(lang);
-    RNRestart.restart(); 
-  }
 
   return (
     <SwipeNavigator>
@@ -51,67 +53,27 @@ const MainLayout = ({ children }) => {
           >
             {/* Header */}
             <View style={styles.header}>
+              <BluetoothStatusIcon />
               <CustomText style={styles.title}>
                 {t('common:app_name')}
               </CustomText>
+              <TouchableWithoutFeedback
+                onPress={() => {
+                  if (route?.name === 'Settings') navigation.goBack();
+                  else navigation.navigate('Settings');
+                }}
+              >
+                {route?.name === 'Settings' ? (
+                  <ArrowBackIcon />
+                ) : (
+                  <SettingsIcon />
+                )}
+              </TouchableWithoutFeedback>
             </View>
 
-            <View
-              style={[
-                styles.header,
-                { justifyContent: 'space-between', marginVertical: 16 },
-              ]}
-            >
-              {/* Language Switch */}
-              <View style={styles.dual_buttons}>
-                <TouchableOpacity onPress={() => changeLanguage("en")}>
-                  <CustomText
-                    style={[
-                      styles.dual_button,
-                      {paddingHorizontal: 12},
-                      { marginInlineEnd: 10 },
-                      i18n.resolvedLanguage == 'en'
-                        ? styles.dual_button_active
-                        : {},
-                    ]}
-                  >
-                    EN
-                  </CustomText>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => changeLanguage('fa')}>
-                  <CustomText
-                    style={[
-                      styles.dual_button,
-                      {paddingHorizontal: 12},
-                      i18n.resolvedLanguage == 'fa'
-                        ? styles.dual_button_active
-                        : {},
-                    ]}
-                  >
-                    FA
-                  </CustomText>
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.header, { marginVertical: 16 }]}>
               {/* Send Method Switch */}
               <View style={styles.dual_buttons}>
-                <TouchableOpacity
-                  style={[
-                    styles.dual_button,
-                    sendMethod === 'wifi' ? styles.dual_button_active : {},
-                  ]}
-                  onPress={() => dispatch(setSendMethod('wifi'))}
-                >
-                  <WifiIcon active={sendMethod === 'wifi'} />
-                  <CustomText
-                    style={[
-                      styles.dual_button,
-                      { marginInlineEnd: 10 },
-                      sendMethod === 'wifi' ? styles.dual_button_active : {},
-                    ]}
-                  >
-                    {t('common:wifi')}
-                  </CustomText>
-                </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.dual_button,
@@ -127,6 +89,44 @@ const MainLayout = ({ children }) => {
                     ]}
                   >
                     {t('common:sms')}
+                  </CustomText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dual_button,
+                    sendMethod === 'bluetooth' ? styles.dual_button_active : {},
+                  ]}
+                  onPress={() => dispatch(setSendMethod('bluetooth'))}
+                >
+                  <BluetoothMethodIcon active={sendMethod === 'bluetooth'} />
+                  <CustomText
+                    style={[
+                      styles.dual_button,
+                      sendMethod === 'bluetooth'
+                        ? styles.dual_button_active
+                        : {},
+                    ]}
+                  >
+                    {t('common:bluetooth')}
+                  </CustomText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.dual_button,
+                    sendMethod === 'wifi' ? styles.dual_button_active : {},
+                    { opacity: 0.5 },
+                  ]}
+                  onPress={() => dispatch(setSendMethod('wifi'))}
+                  disabled
+                >
+                  <WifiIcon active={sendMethod === 'wifi'} />
+                  <CustomText
+                    style={[
+                      styles.dual_button,
+                      sendMethod === 'wifi' ? styles.dual_button_active : {},
+                    ]}
+                  >
+                    {t('common:wifi')}
                   </CustomText>
                 </TouchableOpacity>
               </View>
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   title: {
     fontSize: 18,
@@ -164,16 +164,19 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: COLORS.tint2,
     borderRadius: 8,
     padding: 4,
+    flex: 1,
   },
   dual_button: {
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     borderRadius: 8,
     color: COLORS.tint5,
     fontSize: 12,

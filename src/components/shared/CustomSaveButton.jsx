@@ -10,7 +10,7 @@ const CustomSaveButton = ({ onPress }) => {
   return (
     <TouchableOpacity style={styles.container} onPress={onPress}>
       <CustomText style={styles.text}>
-        {sendMethod === 'sms' ? t('common:send') : t('common:save')}
+        {sendMethod === 'wifi' ? t('common:save') : t('common:send')}
       </CustomText>
     </TouchableOpacity>
   );

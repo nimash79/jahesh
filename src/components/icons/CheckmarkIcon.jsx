@@ -1,9 +1,9 @@
 import Svg, { Path } from "react-native-svg"
 
-const CheckmarkIcon = (props) => (
+const CheckmarkIcon = ({width = 24, height = 24, ...props}) => (
   <Svg
-    width={11}
-    height={9}
+    width={width}
+    height={height}
     viewBox="0 0 11 9"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,16 +7,27 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
 import { Picker } from '@react-native-picker/picker';
+import RNBluetoothClassic from 'react-native-bluetooth-classic';
 
-import { binToNumber, createCommand, getAlarmNumber } from '../utils/helper';
+import {
+  binToNumber,
+  bluetoothResponseValidation,
+  bytesToHex,
+  createBluetoothCommand,
+  createCommand,
+  getAlarmNumber,
+  getSelectedMacAddress,
+  sendAndWaitForBluetoothResponse,
+} from '../utils/helper';
 import { COLORS, OPCODE } from '../utils/constants';
 import { createMem } from '../memory';
-import { updateMemory } from '../reducers/memoryReducer';
-import { notif_success } from '../utils/toast';
+import { notif_error, notif_success } from '../utils/toast';
 import CustomAccordion from '../components/shared/CustomAccordion';
 import MainLayout from '../layouts/MainLayout';
 import CustomButton from '../components/shared/CustomButton';
@@ -28,42 +39,48 @@ import SettingsIcon from './../components/icons/SettingsIcon';
 import CustomPicker from './../components/shared/CustomPicker';
 import ListIcon from './../components/icons/ListIcon';
 import CustomText from '../components/shared/CustomText';
+import CustomLoadingModal from './../components/modals/CustomLoadingModal';
+import MemoryDesign from './../memory/MemoryDesign';
+import { MemDesign } from '../memory/MemDesign';
 
 const ContactsScreen = () => {
   const { t } = useTranslation();
   const dispatch = useDispatch();
-  const { memory, sendMethod } = useSelector(state => state);
+  const memory = useSelector(state => state.memory);
+  const sendMethod = useSelector(state => state.sendMethod);
 
   const [smsLanguage, setSmsLanguage] = useState('fa');
-  const [phoneNumber1, setPhoneNumber1] = useState(1);
-  const [phoneNumber2, setPhoneNumber2] = useState(1);
+  const [phoneNumber1, setPhoneNumber1] = useState(0);
+  const [phoneNumber2, setPhoneNumber2] = useState(0);
   const [mobileNumber, setMobileNumber] = useState('');
   const [phoneTypes, setPhoneTypes] = useState([]);
   const [phoneNumbers, setPhoneNumbers] = useState([]);
 
-  useEffect(() => {
-    setSmsLanguage(
-      memory.system_settings.S_Settings.sms_lang == 0 ? 'fa' : 'en',
-    );
-    // phoneNumbers
-    setPhoneNumbers(memory.phone_numbers.map(x => x.data));
-    // phoneNumber1
-    setMobileNumber(memory.phone_numbers[phoneNumber1 - 1].data);
-    // phoneNumber2
-    const types = [];
-    if (memory.phone_numbers[phoneNumber2 - 1].number_settings.lobbyman)
-      types.push('lobbyman');
-    if (memory.phone_numbers[phoneNumber2 - 1].number_settings.admin)
-      types.push('admin');
-    if (memory.phone_numbers[phoneNumber2 - 1].number_settings.report)
-      types.push('report');
-    if (memory.phone_numbers[phoneNumber2 - 1].number_settings.guard)
-      types.push('guard');
-    if (memory.phone_numbers[phoneNumber2 - 1].number_settings.reserved)
-      types.push('reserved');
-    setPhoneTypes(types);
-  }, [memory, phoneNumber1, phoneNumber2]);
+  const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('loading');
 
+  const abortController = useRef(null);
+
+  useEffect(() => {
+    if (memory.bytes.length == 168) {
+      const mem = new MemDesign(memory.bytes);
+      setSmsLanguage(mem.System_settings.S_Settings.sms_lang ? 'en' : 'fa');
+      setPhoneNumbers(
+        mem.Phone_numbers.map(phone => mem.getPhoneNumberAsNumber(phone.data)),
+      );
+      setMobileNumber(
+        mem.getPhoneNumberAsNumber(mem.Phone_numbers[phoneNumber1].data),
+      );
+      const types = [];
+      if (mem.Phone_numbers[phoneNumber2].Number_settings.ambient_listening)
+        types.push('ambient_listening');
+      if (mem.Phone_numbers[phoneNumber2].Number_settings.admin) types.push('admin');
+      if (mem.Phone_numbers[phoneNumber2].Number_settings.report) types.push('report');
+      if (mem.Phone_numbers[phoneNumber2].Number_settings.guard) types.push('guard');
+      if (mem.Phone_numbers[phoneNumber2].Number_settings.reserved) types.push('reserved');
+      setPhoneTypes(types);
+    }
+  }, [memory, phoneNumber1, phoneNumber2]);
   const toggleType = type => {
     setPhoneTypes(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type],
@@ -71,13 +88,63 @@ const ContactsScreen = () => {
   };
 
   const saveSmsLanguage = async () => {
+    const vars = [smsLanguage == 'en' ? 1 : 0];
     if (sendMethod === 'sms') {
-      const vars = [smsLanguage == 'en' ? 1 : 0];
       const currentAlarmNumber = await getAlarmNumber();
       const command = await createCommand(OPCODE.SMS_LANGUAGE, vars);
       Linking.openURL(
         `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
       );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.SMS_LANGUAGE,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        const validation = bluetoothResponseValidation(
+          response,
+          OPCODE.SMS_LANGUAGE,
+        );
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
     } else {
       const newMemory = createMem();
       newMemory.bytes.set(memory.bytes);
@@ -89,13 +156,57 @@ const ContactsScreen = () => {
   };
 
   const savePhones = async () => {
+    const vars = [phoneNumber1, mobileNumber];
     if (sendMethod === 'sms') {
-      const vars = [phoneNumber1 - 1, mobileNumber];
       const currentAlarmNumber = await getAlarmNumber();
       const command = await createCommand(OPCODE.PHONES, vars);
       Linking.openURL(
         `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
       );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(OPCODE.PHONES, vars);
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        const validation = bluetoothResponseValidation(response, OPCODE.PHONES);
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
     } else {
       const newMemory = createMem();
       newMemory.bytes.set(memory.bytes);
@@ -117,29 +228,83 @@ const ContactsScreen = () => {
   };
 
   const savePhoneNumberSettings = async () => {
+    const isManager = phoneTypes.includes('admin') ? '1' : '0';
+    const isReport = phoneTypes.includes('report') ? '1' : '0';
+    const isGuard = phoneTypes.includes('guard') ? '1' : '0';
+    const isAmbientListening = phoneTypes.includes('ambient_listening')
+      ? '1'
+      : '0';
+    const hex = binToNumber(
+      isGuard + isManager + isReport + isAmbientListening,
+    );
+    const vars = [phoneNumber2, hex];
     if (sendMethod === 'sms') {
-      const isManager = phoneTypes.includes('admin') ? '1' : '0';
-      const isReport = phoneTypes.includes('report') ? '1' : '0';
-      const isGuard = phoneTypes.includes('guard') ? '1' : '0';
-      const isLobyman = phoneTypes.includes('lobbyman') ? '1' : '0';
-      const hex = binToNumber(isGuard + isManager + isReport + isLobyman);
-      const vars = [phoneNumber2 - 1, hex];
       const command = await createCommand(OPCODE.PHONES_SETTINGS, vars);
       const currentAlarmNumber = await getAlarmNumber();
       Linking.openURL(
         `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
       );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.PHONES_SETTINGS,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        const validation = bluetoothResponseValidation(
+          response,
+          OPCODE.PHONES_SETTINGS,
+        );
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
     } else {
       const newMemory = createMem();
       newMemory.bytes.set(memory.bytes);
-      newMemory.phone_numbers[phoneNumber2 - 1].number_settings.admin =
+      newMemory.phone_numbers[phoneNumber2].number_settings.admin =
         phoneTypes.includes('admin');
-      newMemory.phone_numbers[phoneNumber2 - 1].number_settings.report =
+      newMemory.phone_numbers[phoneNumber2].number_settings.report =
         phoneTypes.includes('report');
-      newMemory.phone_numbers[phoneNumber2 - 1].number_settings.guard =
+      newMemory.phone_numbers[phoneNumber2].number_settings.guard =
         phoneTypes.includes('guard');
-      newMemory.phone_numbers[phoneNumber2 - 1].number_settings.lobbyman =
-        phoneTypes.includes('lobbyman');
+      newMemory.phone_numbers[phoneNumber2].number_settings.ambient_listening =
+        phoneTypes.includes('ambient_listening');
       dispatch(updateMemory(newMemory));
       notif_success(t('common:success_save'));
     }
@@ -147,6 +312,12 @@ const ContactsScreen = () => {
 
   return (
     <MainLayout>
+      <CustomLoadingModal
+        loading={loading}
+        onCancel={() => abortController.current?.abort()}
+        status={loadingStatus}
+        close={() => setLoading(false)}
+      />
       <View style={styles.container}>
         <CustomAccordion
           title={t('contactsPage:sms_language')}
@@ -176,6 +347,10 @@ const ContactsScreen = () => {
             onValueChange={setPhoneNumber1}
             options={[
               {
+                label: t('contactsPage:phone_number', { number: 0 }),
+                value: 0,
+              },
+              {
                 label: t('contactsPage:phone_number', { number: 1 }),
                 value: 1,
               },
@@ -191,16 +366,12 @@ const ContactsScreen = () => {
                 label: t('contactsPage:phone_number', { number: 4 }),
                 value: 4,
               },
-              {
-                label: t('contactsPage:phone_number', { number: 5 }),
-                value: 5,
-              },
             ]}
             containerStyle={{ marginBottom: 16 }}
           />
           <CustomInput
             keyboardType="numeric"
-            value={mobileNumber}
+            value={mobileNumber?.toString()}
             onChangeText={setMobileNumber}
             style={styles.input}
             placeholder={t('contactsPage:phone_placeholder')}
@@ -215,6 +386,10 @@ const ContactsScreen = () => {
           <CustomPicker
             options={[
               {
+                label: t('contactsPage:phone_number', { number: 0 }),
+                value: 0,
+              },
+              {
                 label: t('contactsPage:phone_number', { number: 1 }),
                 value: 1,
               },
@@ -229,10 +404,6 @@ const ContactsScreen = () => {
               {
                 label: t('contactsPage:phone_number', { number: 4 }),
                 value: 4,
-              },
-              {
-                label: t('contactsPage:phone_number', { number: 5 }),
-                value: 5,
               },
             ]}
             containerStyle={{ marginBottom: 16 }}
@@ -268,10 +439,10 @@ const ContactsScreen = () => {
               onPress={() => addOrRemovePhoneTypes('guard')}
             />
             <CustomButton
-              text={t('contactsPage:lobyman')}
+              text={t('contactsPage:ambient_listening')}
               style={{ flexBasis: '45%' }}
-              outline={!phoneTypes.includes('lobbyman')}
-              onPress={() => addOrRemovePhoneTypes('lobbyman')}
+              outline={!phoneTypes.includes('ambient_listening')}
+              onPress={() => addOrRemovePhoneTypes('ambient_listening')}
             />
           </View>
           <CustomSaveButton onPress={savePhoneNumberSettings} />
@@ -289,7 +460,7 @@ const ContactsScreen = () => {
                 { backgroundColor: index % 2 ? COLORS.tint1 : COLORS.tint0 },
               ]}
             >
-              <CustomText>{index + 1}.</CustomText>
+              <CustomText>{index}.</CustomText>
               <CustomText>{item}</CustomText>
             </View>
           ))}

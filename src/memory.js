@@ -116,7 +116,7 @@ function createPhone(buffer, offset) {
     buffer,
     offset,
     [
-      { name: "lobbyman", bits: 1 },
+      { name: "ambient_listening", bits: 1 },
       { name: "admin", bits: 1 },
       { name: "report", bits: 1 },
       { name: "guard", bits: 1 },

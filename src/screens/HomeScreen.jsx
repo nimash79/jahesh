@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,33 @@ import {
   TextInput,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
+  Modal,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
+import RNBluetoothClassic from 'react-native-bluetooth-classic';
 
-import { createCommand, getAlarmNumber } from '../utils/helper';
-import { COLORS, OPCODE } from '../utils/constants';
+import {
+  bluetoothCommandValidation,
+  bluetoothResponseValidation,
+  bytesToHex,
+  createBluetoothCommand,
+  createCommand,
+  getAlarmNumber,
+  getSelectedMacAddress,
+  hexToBytes,
+  sendAndWaitForBluetoothResponse,
+} from '../utils/helper';
+import { COLORS, OPCODE, STORAGE_KEYS } from '../utils/constants';
 import { notif_error, notif_success } from '../utils/toast';
 import { createMem } from '../memory';
-import { updateMemory } from '../reducers/memoryReducer';
 import CustomAccordion from '../components/shared/CustomAccordion';
 import PowerIcon from './../components/icons/PowerIcon';
-import LobymanIcon from './../components/icons/LobymanIcon';
+import RelayIcon from './../components/icons/RelayIcon';
 import PhoneIcon from './../components/icons/PhoneIcon';
 import MainLayout from '../layouts/MainLayout';
 import CustomPicker from '../components/shared/CustomPicker';
@@ -31,38 +44,32 @@ import LockIcon from '../components/icons/LockIcon';
 import UnlockIcon from '../components/icons/UnlockIcon';
 import CustomInput from '../components/shared/CustomInput';
 import LockToggle from '../components/LockToggle';
-
-const STORAGE_KEYS = {
-  alarmNumber: 'alarm_number',
-  alarmPassword: 'alarm_password',
-  deviceStatus: 'home_device_status',
-  relayStatus: 'home_relay_status',
-  relayNumber: 'home_relay_number',
-  alarmProfiles: 'alarm_profiles',
-};
+import AmbientListenIcon from '../components/icons/AmbientListenIcon';
+import SilentIcon from '../components/icons/SilentIcon';
+import BluetoothIcon from '../components/icons/BluetoothIcon';
+import MemoryDesign from '../memory/MemoryDesign';
+import CustomLoadingModal from '../components/modals/CustomLoadingModal';
+import RefreshIcon from '../components/icons/RefreshIcon';
+import RefreshButton from '../components/RefreshButton';
+import { loadMemory } from '../reducers/memoryReducer';
+import { useNavigation } from '@react-navigation/native';
+import { MemDesign } from './../memory/MemDesign';
 
 const HomeScreen = () => {
   const { t } = useTranslation();
   const dispatch = useDispatch();
-  const { sendMethod, memory } = useSelector(s => s);
+  const memory = useSelector(state => state.memory);
+  const sendMethod = useSelector(state => state.sendMethod);
 
+  const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('loading');
   const [deviceStatus, setDeviceStatus] = useState(false);
   const [relayStatus, setRelayStatus] = useState(false);
-  const [relayNumber, setRelayNumber] = useState(1);
+  const [relayNumber, setRelayNumber] = useState(0);
+  
+  const abortController = useRef(null);
 
-  const [alarms, setAlarms] = useState([]);
-  const [selectedAlarmId, setSelectedAlarmId] = useState(null);
-
-  const selectedAlarm = useMemo(
-    () =>
-      alarms.find(a => a.id === selectedAlarmId) || {
-        id: null,
-        name: '',
-        number: '',
-        password: '',
-      },
-    [alarms, selectedAlarmId],
-  );
+  const navigation = useNavigation();
 
   // ---------- LOADING ----------
   useEffect(() => {
@@ -83,35 +90,6 @@ const HomeScreen = () => {
         STORAGE_KEYS.relayNumber,
       );
       if (savedRelayNumber !== null) setRelayNumber(Number(savedRelayNumber));
-
-      let savedAlarmsStr = await AsyncStorage.getItem(
-        STORAGE_KEYS.alarmProfiles,
-      );
-      let savedAlarms = savedAlarmsStr ? JSON.parse(savedAlarmsStr) : null;
-
-      if (!savedAlarms || !Array.isArray(savedAlarms) || !savedAlarms.length) {
-        let legacyNumber =
-          (await AsyncStorage.getItem(STORAGE_KEYS.alarmNumber)) || '123456789';
-        let legacyPassword =
-          (await AsyncStorage.getItem(STORAGE_KEYS.alarmPassword)) || '1234';
-
-        savedAlarms = [
-          {
-            id: 1,
-            name: t('homePage:default_alarm_name', { defaultValue: 'Alarm 1' }),
-            number: legacyNumber,
-            password: legacyPassword,
-          },
-        ];
-
-        await AsyncStorage.setItem(
-          STORAGE_KEYS.alarmProfiles,
-          JSON.stringify(savedAlarms),
-        );
-      }
-
-      setAlarms(savedAlarms);
-      setSelectedAlarmId(savedAlarms[0].id);
     })();
   }, []);
 
@@ -137,79 +115,128 @@ const HomeScreen = () => {
     })();
   }, [relayNumber]);
 
-  const persistAlarms = async nextAlarms => {
-    await AsyncStorage.setItem(
-      STORAGE_KEYS.alarmProfiles,
-      JSON.stringify(nextAlarms),
-    );
-    setAlarms(nextAlarms);
-  };
-
-  const saveSelectedAlarm = () => {
-    if (!selectedAlarmId) return;
-
-    const idx = alarms.findIndex(a => a.id === selectedAlarmId);
-    if (idx === -1) return;
-
-    const alarm = alarms[idx];
-
-    if (!alarm.number || !alarm.password) {
-      notif_error(t('homePage:validation'));
-      return;
-    }
-
-    const nextAlarms = [...alarms];
-    nextAlarms[idx] = { ...alarm };
-    persistAlarms(nextAlarms);
-    notif_success(t('common:success'));
-  };
-
-  const addAlarm = () => {
-    const nextId = (alarms.reduce((max, a) => Math.max(max, a.id), 0) || 0) + 1;
-
-    const newAlarm = {
-      id: nextId,
-      name:
-        t('homePage:default_alarm_name_with_index', {
-          index: nextId,
-          defaultValue: `Alarm ${nextId}`,
-        }) || `Alarm ${nextId}`,
-      number: '',
-      password: '',
-    };
-
-    const nextAlarms = [...alarms, newAlarm];
-    persistAlarms(nextAlarms);
-    setSelectedAlarmId(newAlarm.id);
-  };
-
-  const removeSelectedAlarm = () => {
-    if (alarms.length <= 1) {
-      notif_error(t('homePage:at_least_one_alarm'));
-      return;
-    }
-
-    const nextAlarms = alarms.filter(a => a.id !== selectedAlarmId);
-    persistAlarms(nextAlarms);
-    setSelectedAlarmId(nextAlarms[0]?.id || null);
-  };
-
-  const currentAlarmNumberForSms = selectedAlarm.number || getAlarmNumber();
-
   // --- Memory update from redux ---
   useEffect(() => {
-    setDeviceStatus(memory.device_state.locked);
-    setRelayStatus(memory.device_state.relays[relayNumber - 1]);
-  }, [memory, relayNumber]);
+    if (memory.bytes.length == 168) {
+      const mem = new MemDesign(memory.bytes);
+      setDeviceStatus(mem.device_state > 0);
+      setRelayNumber(0);
+      setRelayStatus(mem.System_settings.S_Settings.relay_state > 0);
+    }
+  }, [memory]);
+
+  // ---------- REFRESH ----------
+  const refresh = async () => {
+    const vars = [];
+    if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.SYSTEM_UPDATE,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          let response = await sendAndWaitForBluetoothResponse(
+            selectedMacAddressValue,
+            dataToSend,
+            abortController.current.signal,
+          );
+          if (bluetoothCommandValidation(response)) {
+            await dispatch(loadMemory(response));
+            setLoadingStatus('success');
+            return;
+            // notif_success(t('common:success'), t('common:success_send'));
+          } else {
+            notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+          }
+        } catch (err) {
+          console.log('err:', err);
+          // if (err == 'Error: Response timeout')
+          //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+          if (err == 'Error: Operation cancelled')
+            break;
+        }
+      }
+      setLoadingStatus('error');
+    }
+  };
 
   // ---------- SAVE DEVICE STATUS ----------
   const saveDeviceStatus = async () => {
+    const vars = [!deviceStatus ? 0 : 1];
     if (sendMethod === 'sms') {
-      const vars = [deviceStatus ? 0 : 1];
       const command = await createCommand(OPCODE.DEVICE_STATUS, vars);
+      const currentAlarmNumber = await getAlarmNumber();
       Linking.openURL(
-        `sms:${currentAlarmNumberForSms}?body=${encodeURIComponent(command)}`,
+        `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
       );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.DEVICE_STATUS,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        
+        const validation = bluetoothResponseValidation(
+          response,
+          OPCODE.DEVICE_STATUS,
+        );
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+        setDeviceStatus(d => !d);
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
     } else {
       const newMemory = createMem();
       newMemory.bytes.set(memory.bytes);
@@ -221,12 +248,68 @@ const HomeScreen = () => {
 
   // ---------- SAVE RELAY ----------
   const saveRelayStatus = async () => {
+    // validation
+    if (relayNumber == null || relayNumber < 0 || relayNumber > 99) {
+      notif_error(t('common:error'), t('homePage:relay_validation'));
+      return;
+    }
+    const vars = [relayNumber, relayStatus ? 1 : 0];
     if (sendMethod === 'sms') {
-      const vars = [relayNumber, relayStatus ? 0 : 1];
       const command = await createCommand(OPCODE.RELAY_STATUS, vars);
+      const currentAlarmNumber = await getAlarmNumber();
       Linking.openURL(
-        `sms:${currentAlarmNumberForSms}?body=${encodeURIComponent(command)}`,
+        `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
       );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.RELAY_STATUS,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        const validation = bluetoothResponseValidation(
+          response,
+          OPCODE.RELAY_STATUS,
+        );
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
     } else {
       const newMemory = createMem();
       newMemory.bytes.set(memory.bytes);
@@ -236,20 +319,92 @@ const HomeScreen = () => {
     }
   };
 
+  const saveAmbientListening = async () => {
+    const vars = [];
+    if (sendMethod === 'sms') {
+      const command = await createCommand(OPCODE.AMBIENT_LISTENING, vars);
+      const currentAlarmNumber = await getAlarmNumber();
+      Linking.openURL(
+        `sms:${currentAlarmNumber}?body=${encodeURIComponent(command)}`,
+      );
+    } else if (sendMethod === 'bluetooth') {
+      const isEnabled = await RNBluetoothClassic.requestBluetoothEnabled();
+      if (!isEnabled) {
+        notif_error(t('common:error'), t('common:bluetooth_notEnabled'));
+        return;
+      }
+      const selectedMacAddressValue = await getSelectedMacAddress();
+      const isConnected = await RNBluetoothClassic.isDeviceConnected(
+        selectedMacAddressValue,
+      );
+      if (!isConnected) {
+        notif_error(t('common:error'), t('common:bluetooth_notConnected'));
+        return;
+      }
+      const dataToSend = await createBluetoothCommand(
+        OPCODE.AMBIENT_LISTENING,
+        vars,
+      );
+      abortController.current = new AbortController();
+      setLoadingStatus('loading');
+      setLoading(true);
+      try {
+        const response = await sendAndWaitForBluetoothResponse(
+          selectedMacAddressValue,
+          dataToSend,
+          abortController.current.signal,
+        );
+        await Alert.alert('Received data:', bytesToHex(response));
+        const validation = bluetoothResponseValidation(
+          response,
+          OPCODE.AMBIENT_LISTENING,
+        );
+
+        if (!validation.valid) {
+          console.log('Invalid response:', validation);
+
+          setLoadingStatus('error');
+
+          notif_error(t('common:error'), t('common:bluetooth_invalidData'));
+
+          return;
+        }
+        setLoadingStatus('success');
+      } catch (err) {
+        console.log('err:', err);
+        // if (err == 'Error: Response timeout')
+        //   notif_error(t('common:error'), t('common:bluetooth_responseError'));
+        // else if (err == 'Error: Operation cancelled')
+        //   notif_success(t('common:success', t('common:success_cancel')));
+        setLoadingStatus('error');
+      }
+    } else {
+      // TODO
+    }
+  };
+
   return (
     <MainLayout>
+      <CustomLoadingModal
+        loading={loading}
+        status={loadingStatus}
+        onCancel={() => abortController.current?.abort()}
+        close={() => setLoading(false)}
+      />
       <View style={styles.container}>
-        <CustomAccordion title={t('homePage:device_status')} Icon={PowerIcon}>
-          <LockToggle
-            locked={!deviceStatus}
-            onToggle={() => setDeviceStatus(p => !p)}
-          />
+        {/* <CustomButton text={"Debug"} onPress={() => navigation.navigate("Debug")} style={{marginBottom: 16}} /> */}
+        {sendMethod === 'bluetooth' ? (
+          <CustomAccordion title={t('homePage:refresh')} Icon={RefreshIcon}>
+            <RefreshButton onPress={refresh} />
+          </CustomAccordion>
+        ) : null}
 
-          <CustomSaveButton onPress={saveDeviceStatus} />
+        <CustomAccordion title={t('homePage:device_status')} Icon={PowerIcon}>
+          <LockToggle locked={!deviceStatus} onToggle={saveDeviceStatus} />
         </CustomAccordion>
 
-        <CustomAccordion title={t('homePage:relays_status')} Icon={LobymanIcon}>
-          <CustomPicker
+        <CustomAccordion title={t('homePage:relays_status')} Icon={RelayIcon}>
+          {/* <CustomPicker
             containerStyle={{ marginBottom: 16 }}
             selectedValue={relayNumber}
             onValueChange={setRelayNumber}
@@ -263,23 +418,15 @@ const HomeScreen = () => {
               { label: t('homePage:relay_number', { number: 7 }), value: 7 },
               { label: t('homePage:relay_number', { number: 8 }), value: 8 },
             ]}
-          />
-
-          {/* <CustomDropdown
-            value={relayNumber}
-            setValue={setRelayNumber}
-            containerStyle={{ marginBottom: 16 }}
-            options={[
-              { label: t('homePage:relay_number', { number: 1 }), value: 1 },
-              { label: t('homePage:relay_number', { number: 2 }), value: 2 },
-              { label: t('homePage:relay_number', { number: 3 }), value: 3 },
-              { label: t('homePage:relay_number', { number: 4 }), value: 4 },
-              { label: t('homePage:relay_number', { number: 5 }), value: 5 },
-              { label: t('homePage:relay_number', { number: 6 }), value: 6 },
-              { label: t('homePage:relay_number', { number: 7 }), value: 7 },
-              { label: t('homePage:relay_number', { number: 8 }), value: 8 },
-            ]}
           /> */}
+
+          <CustomInput
+            keyboardType="numeric"
+            value={relayNumber?.toString()}
+            onChangeText={setRelayNumber}
+            style={{ marginBottom: 16 }}
+            placeholder={t('homePage:relay_placeholder')}
+          />
 
           <View style={styles.dual_button}>
             <CustomButton
@@ -308,66 +455,15 @@ const HomeScreen = () => {
           <CustomSaveButton onPress={saveRelayStatus} />
         </CustomAccordion>
 
-        <CustomAccordion title={t('homePage:alarm_number')} Icon={PhoneIcon}>
-
-          <CustomPicker
-            selectedValue={selectedAlarmId}
-            onValueChange={v => setSelectedAlarmId(v)}
-            options={alarms.map(a => ({ label: a.name, value: a.id }))}
-            containerStyle={{ marginBottom: 16 }}
+        <CustomAccordion
+          title={t('homePage:ambient_listening')}
+          Icon={AmbientListenIcon}
+        >
+          <CustomButton
+            onPress={saveAmbientListening}
+            text={t('homePage:ambient_listening')}
+            style={{ marginBottom: 16 }}
           />
-
-          <View style={[styles.row, { marginBottom: 16 }]}>
-            <CustomButton
-              onPress={addAlarm}
-              text={t('homePage:add_alarm')}
-              style={{ flex: 1, marginInlineStart: 8, marginInlineEnd: 8 }}
-            />
-            <CustomButton
-              onPress={removeSelectedAlarm}
-              text={t('homePage:remove_alarm')}
-              style={{ flex: 1, backgroundColor: COLORS.error }}
-            />
-          </View>
-
-          <CustomInput
-            style={styles.input}
-            placeholder={t('homePage:alarm_name_placeholder')}
-            value={selectedAlarm.name}
-            onChangeText={name =>
-              setAlarms(prev =>
-                prev.map(a => (a.id === selectedAlarmId ? { ...a, name } : a)),
-              )
-            }
-          />
-          <CustomInput
-            style={styles.input}
-            placeholder={t('homePage:phone_placeholder')}
-            keyboardType="phone-pad"
-            value={selectedAlarm.number}
-            onChangeText={number =>
-              setAlarms(prev =>
-                prev.map(a =>
-                  a.id === selectedAlarmId ? { ...a, number } : a,
-                ),
-              )
-            }
-          />
-          <CustomInput
-            style={styles.input}
-            placeholder={t('homePage:password_placeholder')}
-            secureTextEntry
-            value={selectedAlarm.password}
-            onChangeText={password =>
-              setAlarms(prev =>
-                prev.map(a =>
-                  a.id === selectedAlarmId ? { ...a, password } : a,
-                ),
-              )
-            }
-          />
-
-          <CustomSaveButton onPress={saveSelectedAlarm} />
         </CustomAccordion>
       </View>
     </MainLayout>
@@ -379,6 +475,14 @@ export default HomeScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999, // Android
   },
   accordion: { marginBottom: 16, borderWidth: 1, borderRadius: 8, padding: 8 },
   accordionHeader: {
